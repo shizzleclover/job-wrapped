@@ -1,0 +1,6 @@
+@import "tailwindcss";
+
+.jw {
+  font-family: "Google Sans", "Google Sans Text", ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
