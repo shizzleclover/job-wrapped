@@ -333,7 +333,7 @@ export function buildSlides(ctx: SlideContext): SlideDef[] {
               </div>
             </div>
             <Fade delay={1} className="flex flex-wrap gap-[2cqw]">
-              <Chip theme={THEMES.sky}>{plural(o.people, "person", "people")} reached</Chip>
+              <Chip theme={THEMES.sky}>{plural(o.cold, "thread")} you started</Chip>
               {o.coverLetters > 0 && <Chip theme={THEMES.sky}>{plural(o.coverLetters, "cover letter")}</Chip>}
               {o.followUps > 0 && <Chip theme={THEMES.sky}>{plural(o.followUps, "follow-up")}</Chip>}
               {o.dearHiringManager > 0 && <Chip theme={THEMES.sky}>“Dear Hiring Manager” × {o.dearHiringManager}</Chip>}
@@ -345,7 +345,7 @@ export function buildSlides(ctx: SlideContext): SlideDef[] {
                     <span className="font-sans text-[3.4cqw] font-semibold uppercase tracking-[0.14em] opacity-75">Wrote back</span>
                     <span className="font-display text-[9cqw] font-extrabold leading-none">{o.replyRatePct}%</span>
                   </div>
-                  <div className="mt-[3cqw] grid grid-cols-10 gap-[2cqw]" role="img" aria-label={`${o.replied} of ${o.checked} people wrote back`}>
+                  <div className="mt-[3cqw] grid grid-cols-10 gap-[2cqw]" role="img" aria-label={`${o.replied} of ${o.checked} emails you started got a reply`}>
                     {Array.from({ length: shown }, (_, i) => {
                       const Icon = i < lit ? MailCheck : Mail;
                       return (

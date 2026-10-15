@@ -59,13 +59,12 @@ export function classify(subject: string, snippet: string, senderName = "", send
   return { label: null, reason: job ? "Mentions a job but no clear outcome" : "No job signal", unsure: job };
 }
 
-const SENT_JOB =
-  /résumé|resume|\bcv\b|cover letter|portfolio|\b(role|position|opening|vacancy|internship|opportunit(y|ies)|interview|recruiter|hiring|job|apply|applying|applied|application|referral|refer me)\b/i;
-
-/** Signals for emails the user sent. Null when it doesn't look job-related. */
+/**
+ * Signals for emails the user sent. Gmail's search already matched job words anywhere in the email,
+ * so we trust it and only look at subject and preview for the extra details.
+ */
 export function classifySent(subject: string, snippet: string) {
   const text = `${subject} ${snippet}`;
-  if (!SENT_JOB.test(text)) return null;
   return {
     coverLetter: /cover letter/i.test(text),
     resume: /résumé|resume|\bcv\b/i.test(text),

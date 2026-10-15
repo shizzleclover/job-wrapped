@@ -13,7 +13,10 @@ const TONES: Record<WrappedInput["spiceLevel"], string> = {
     "Full comedic roast. Brutally funny, dramatic and delightfully unhinged about ATS platforms, ghosting recruiters and 2 AM panic-applying. Roast the system harder than the person; never punch down.",
 };
 
-const system = (input: WrappedInput) => `You are the lead writer for "Job Hunt Wrapped", a Spotify Wrapped style story about someone's job hunt, built from their inbox.
+const GENRES = ["Afrobeats", "amapiano", "hip-hop", "R&B", "pop", "indie", "rock", "pop punk", "electronic", "disco or funk", "K-pop", "Latin", "2000s throwback", "soul", "alt-pop", "UK rap"];
+const OVERUSED = ["Eye of the Tiger", "Lose Yourself", "Don't Stop Me Now", "Stronger", "Harder, Better, Faster, Stronger", "Hall of Fame", "Fighter", "Roar", "Rise Up", "Can't Hold Us", "Celebration", "Unstoppable", "Survivor", "Confident", "Titanium"];
+
+const system = (input: WrappedInput, genre: string) => `You are the lead writer for "Job Hunt Wrapped", a Spotify Wrapped style story about someone's job hunt, built from their inbox.
 Tone: ${TONES[input.spiceLevel]}
 
 Rules:
@@ -24,7 +27,8 @@ Rules:
 4. Never use em dashes. Use commas, colons or periods.
 5. If a stat is zero or missing, joke about that instead of pretending.
 6. The personality archetype should feel tailor-made and screenshot-worthy. auraColors are 6-digit hex codes that pop on a near-black card.
-7. The theme song must be a real, well-known song.
+7. The theme song must be a real, well-known song that exists on Spotify, chosen for this person's actual story (late nights, ghosting, rejections, a big win).
+   Song genre for this person: ${genre}. Never pick these overused songs: ${OVERUSED.join("; ")}.
 8. Banned words: testament, truly, beacon, journey, proving, undeniable, remarkable, navigate. No exclamation marks.
 
 Style examples (match the energy, never copy them):
@@ -37,8 +41,8 @@ function outreachFacts(o: WrappedInput["metrics"]["outreach"]): Array<string | f
   if (!o) return ["The user chose not to scan their sent emails, so there's no outreach data."];
   if (o.sent === 0) return ["They sent zero job-related emails themselves (no cold outreach, no emailed cover letters)."];
   return [
-    `They wrote ${o.sent} job-related emails themselves to ${o.people} people. ${o.cold} were cold emails to people who hadn't contacted them first.`,
-    o.checked > 0 && `Of ${o.checked} cold contacts, ${o.replied} ever wrote back (${o.replyRatePct}%).`,
+    `They sent ${o.sent} job-related emails themselves. ${o.cold} were new threads they started (outreach and applications by email); the rest were replies to recruiters.`,
+    o.checked > 0 && `Of the ${o.cold} threads they started, ${o.replied} got a reply (${o.replyRatePct}%).`,
     `${o.coverLetters} mentioned a cover letter, ${o.resumes} a resume or CV, ${o.followUps} were follow-ups. "Dear Hiring Manager" or "To whom it may concern": ${o.dearHiringManager} times.`,
     o.topCompany && `They emailed people at ${o.topCompany.name} the most (${o.topCompany.count} emails).`,
   ];
@@ -117,7 +121,8 @@ export async function POST(req: NextRequest) {
     const { output } = await generateText({
       model: google(MODEL),
       output: Output.object({ schema: WrappedCopySchema }),
-      system: system(input),
+      // A random genre per Wrapped, so the anthem isn't the same motivational classic every time.
+      system: system(input, GENRES[Math.floor(Math.random() * GENRES.length)]!),
       prompt: prompt(input),
       maxRetries: 1,
       timeout: 25_000,

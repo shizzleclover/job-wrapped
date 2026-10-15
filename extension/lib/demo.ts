@@ -1,5 +1,5 @@
 import type { Category } from "../shared/schema";
-import type { ReplyChecks, ScannedEmail, SentEmail } from "./analyze";
+import type { ScannedEmail, SentEmail } from "./analyze";
 
 // Deterministic fake inbox so demo mode and screenshots look the same every time.
 function rng(seed: number) {
@@ -134,7 +134,7 @@ function platformOf(sender: string): string | null {
   return null;
 }
 
-export function demoOutbox(now = Date.now()): { sent: SentEmail[]; checks: ReplyChecks } {
+export function demoOutbox(now = Date.now()): { sent: SentEmail[] } {
   const r = rng(7);
   const targets = ["Stripe", "Linear", "Vercel", "Paystack", "Flutterwave", "Supabase", "Ramp", "Deel", "Figma", "Cloudflare"];
   const sent: SentEmail[] = Array.from({ length: 41 }, (_, i) => {
@@ -147,12 +147,13 @@ export function demoOutbox(now = Date.now()): { sent: SentEmail[]; checks: Reply
       snippet: "",
       timestamp: now - Math.floor(r() * 300) * 86_400_000,
       company,
+      startedByMe: i % 6 !== 5,
+      replied: i % 4 === 0,
       coverLetter: r() < 0.45,
       resume: r() < 0.8,
       followUp: i % 3 === 0,
       dearHiringManager: r() < 0.3,
     };
   });
-  const people = [...new Set(sent.map((s) => s.recipients[0]!.email))];
-  return { sent, checks: { checked: people, replied: people.filter((_, i) => i % 4 === 0) } };
+  return { sent };
 }

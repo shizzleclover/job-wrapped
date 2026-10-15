@@ -56,7 +56,7 @@ function GmailOverlayApp() {
           isDemo: false,
           threads: scan.threads,
           truncated: scan.truncated,
-          outbox: scan.sent ? { sent: scan.sent, checks: scan.replyChecks } : null,
+          outbox: scan.sent ? { sent: scan.sent } : null,
         }
       )
     );

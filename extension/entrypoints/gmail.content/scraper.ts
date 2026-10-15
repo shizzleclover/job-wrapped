@@ -1,5 +1,5 @@
 import { classify, classifySent, extractCompany, extractRole, platformFor, type Verdict } from "../../lib/classify";
-import type { ReplyChecks, ScannedEmail, SentEmail } from "../../lib/analyze";
+import type { ScannedEmail, SentEmail } from "../../lib/analyze";
 
 export interface ScanProgress {
   label: string;
@@ -16,8 +16,6 @@ export interface ScanItem {
 export interface ScanResult {
   items: ScanItem[];
   sent: SentEmail[] | null;
-  /** Which cold contacts we checked for a reply, and which of them wrote back */
-  replyChecks: ReplyChecks;
   threads: number;
   truncated: boolean;
 }
@@ -25,8 +23,6 @@ export interface ScanResult {
 const MAX_PAGES = 5;
 // Digests, communities and promos live in these tabs; real company emails land in Primary or Updates.
 const WINDOW = "newer_than:1y -from:me -category:promotions -category:social -category:forums";
-const REPLY_BATCH = 15;
-const MAX_REPLY_CHECKS = 60;
 
 interface Step {
   label: string;
@@ -124,16 +120,21 @@ function selfEmail(): string | null {
 
 interface RowParts {
   key: string;
+  /** Everyone in the thread except you, in the order Gmail lists them */
   people: Array<{ name: string; email: string }>;
+  /** Gmail lists thread participants in writing order, so "me, Jane" means you wrote first */
+  startedByMe: boolean;
   subject: string;
   snippet: string;
   timestamp: number | null;
 }
 
 function rowParts(row: HTMLTableRowElement, me: string | null): RowParts | null {
-  const people = Array.from(row.querySelectorAll<HTMLElement>("span[email]"))
-    .map((s) => ({ name: s.getAttribute("name") || s.innerText.trim(), email: (s.getAttribute("email") ?? "").toLowerCase() }))
-    .filter((p) => p.email && p.name !== "me" && p.email !== me);
+  const everyone = Array.from(row.querySelectorAll<HTMLElement>("span[email]")).map((s) => {
+    const email = (s.getAttribute("email") ?? "").toLowerCase();
+    return { name: s.getAttribute("name") || s.innerText.trim(), email, isMe: s.innerText.trim().toLowerCase() === "me" || email === me };
+  });
+  const people = everyone.filter((p) => p.email && !p.isMe).map(({ name, email }) => ({ name, email }));
   const subject = row.querySelector<HTMLElement>(".bog")?.innerText.trim() ?? "";
   const snippet = (row.querySelector<HTMLElement>(".y2")?.innerText ?? "").replace(/^\s*[-–]\s*/, "").trim();
   if (!subject && !snippet) return null;
@@ -142,7 +143,14 @@ function rowParts(row: HTMLTableRowElement, me: string | null): RowParts | null 
     row.querySelector("[data-thread-id]")?.getAttribute("data-thread-id") ??
     row.querySelector("[data-legacy-thread-id]")?.getAttribute("data-legacy-thread-id");
   const timestamp = parseGmailDate(dateEl?.getAttribute("title") || dateEl?.innerText || "");
-  return { key: threadId ?? `${people[0]?.email ?? ""}|${subject}|${timestamp ?? ""}`, people, subject, snippet: snippet.slice(0, 200), timestamp };
+  return {
+    key: threadId ?? `${people[0]?.email ?? ""}|${subject}|${timestamp ?? ""}`,
+    people,
+    startedByMe: everyone[0]?.isMe ?? false,
+    subject,
+    snippet: snippet.slice(0, 200),
+    timestamp,
+  };
 }
 
 function parseReceived(p: RowParts): ScanItem {
@@ -165,16 +173,18 @@ function parseReceived(p: RowParts): ScanItem {
 
 function parseSent(p: RowParts): SentEmail | null {
   const signals = classifySent(p.subject, p.snippet);
-  const recipients = p.people.filter((r) => !NO_REPLY.test(r.email));
-  if (!signals || recipients.length === 0) return null;
-  const first = recipients[0]!;
+  // A thread with only you in it is an email nobody has answered yet: still counts.
+  const others = p.people.filter((r) => !NO_REPLY.test(r.email));
+  const first = others[0];
   return {
     key: p.key,
-    recipients,
+    recipients: others,
     subject: p.subject,
     snippet: p.snippet,
     timestamp: p.timestamp,
-    company: extractCompany(first.name, first.email, p.subject, p.snippet),
+    company: first ? extractCompany(first.name, first.email, p.subject, p.snippet) : extractCompany("", "", p.subject, p.snippet),
+    startedByMe: p.startedByMe,
+    replied: p.startedByMe && others.length > 0,
     ...signals,
   };
 }
@@ -184,11 +194,8 @@ export async function scanGmail(onProgress: (p: ScanProgress) => void, opts: { i
   const me = selfEmail();
   const received = new Map<string, ScanItem>();
   const sent = new Map<string, SentEmail>();
-  const replied = new Set<string>();
-  let checkedContacts: string[] = [];
   const steps = [...RECEIVED, ...(opts.includeSent ? [SENT] : [])];
-  const replyBatches = opts.includeSent ? MAX_REPLY_CHECKS / REPLY_BATCH : 0;
-  const totalSteps = steps.reduce((s, q) => s + q.pages, 0) + replyBatches;
+  const totalSteps = steps.reduce((s, q) => s + q.pages, 0);
   let done = 0;
   let truncated = false;
 
@@ -231,26 +238,12 @@ export async function scanGmail(onProgress: (p: ScanProgress) => void, opts: { i
 
     if (opts.includeSent) {
       await crawl(SENT, (p) => {
+        if (sent.has(p.key)) return false;
         const email = parseSent(p);
-        if (!email || sent.has(email.key)) return false;
-        sent.set(email.key, email);
+        if (email) sent.set(email.key, email);
         return true;
       });
 
-      // Did the people you reached out to ever write back? Ask Gmail directly, in batches.
-      const known = new Set([...received.values()].filter((i) => i.email.category !== "OTHER").map((i) => i.email.senderEmail));
-      const contacts = [...new Set([...sent.values()].flatMap((s) => s.recipients.map((r) => r.email)))].filter((e) => !known.has(e));
-      const checks = contacts.slice(0, MAX_REPLY_CHECKS);
-      checkedContacts = checks;
-      for (let i = 0; i < checks.length; i += REPLY_BATCH) {
-        const batch = checks.slice(i, i + REPLY_BATCH);
-        report("Checking who wrote back");
-        await navigate(`#search/${encodeURIComponent(`from:(${batch.join(" OR ")}) newer_than:1y`)}`);
-        for (const row of visibleRows()) {
-          for (const p of rowParts(row, me)?.people ?? []) if (batch.includes(p.email)) replied.add(p.email);
-        }
-        done++;
-      }
     }
   } finally {
     window.location.hash = originalHash;
@@ -261,7 +254,6 @@ export async function scanGmail(onProgress: (p: ScanProgress) => void, opts: { i
   return {
     items: [...received.values()],
     sent: opts.includeSent ? [...sent.values()] : null,
-    replyChecks: { checked: checkedContacts, replied: [...replied] },
     threads: received.size + sent.size,
     truncated,
   };

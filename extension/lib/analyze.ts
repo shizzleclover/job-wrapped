@@ -22,15 +22,14 @@ export interface SentEmail {
   snippet: string;
   timestamp: number | null;
   company: string | null;
+  /** You wrote the first message in the thread (outreach), rather than replying to someone */
+  startedByMe: boolean;
+  /** Someone else wrote in a thread you started */
+  replied: boolean;
   coverLetter: boolean;
   resume: boolean;
   followUp: boolean;
   dearHiringManager: boolean;
-}
-
-export interface ReplyChecks {
-  checked: string[];
-  replied: string[];
 }
 
 const DAY = 86_400_000;
@@ -145,20 +144,20 @@ function streak(days: string[]): number {
   return best;
 }
 
-export function analyzeOutreach(sent: SentEmail[], received: ScannedEmail[], checks: ReplyChecks): Outreach {
-  const known = new Set(received.map((e) => e.senderEmail.toLowerCase()));
-  const isCold = (s: SentEmail) => s.recipients.every((r) => !known.has(r.email));
+export function analyzeOutreach(sent: SentEmail[]): Outreach {
+  // Reply rate only counts threads you started: replying to a recruiter isn't outreach.
+  const started = sent.filter((s) => s.startedByMe);
+  const replied = started.filter((s) => s.replied).length;
   const people = new Set(sent.flatMap((s) => s.recipients.map((r) => r.email)));
-  const replied = new Set(checks.replied);
   const byCompany = countBy(sent, (s) => s.company);
   const topCompany = ranked(byCompany, 1)[0];
   return {
     sent: sent.length,
-    cold: sent.filter(isCold).length,
+    cold: started.length,
     people: people.size,
-    checked: checks.checked.length,
-    replied: checks.checked.filter((e) => replied.has(e)).length,
-    replyRatePct: pct(checks.checked.filter((e) => replied.has(e)).length, checks.checked.length),
+    checked: started.length,
+    replied,
+    replyRatePct: pct(replied, started.length),
     coverLetters: sent.filter((s) => s.coverLetter).length,
     resumes: sent.filter((s) => s.resume).length,
     followUps: sent.filter((s) => s.followUp).length,
@@ -171,7 +170,7 @@ export function analyzeOutreach(sent: SentEmail[], received: ScannedEmail[], che
 export function analyze(
   all: ScannedEmail[],
   now = Date.now(),
-  outbox: { sent: SentEmail[]; checks: ReplyChecks } | null = null
+  outbox: { sent: SentEmail[] } | null = null
 ): { metrics: Metrics; samples: SampleEmail[] } {
   // Programs (hackathons, fellowships…) and anything unlabelled stay out of the job numbers.
   const emails = all.filter((e) => e.category !== "PROGRAM" && e.category !== "OTHER");
@@ -334,7 +333,7 @@ export function analyze(
       wildcard,
       all: uniqueRoles.slice(0, 40).map((r) => r.title),
     },
-    outreach: outbox ? analyzeOutreach(outbox.sent, emails, outbox.checks) : null,
+    outreach: outbox ? analyzeOutreach(outbox.sent) : null,
     programs: { count: programs.length, names: programNames },
     responseTimes: {
       fastestRejection: fastest ? { company: fastest.company, hours: Math.round(fastest.days * 24 * 10) / 10 } : null,

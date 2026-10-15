@@ -1,5 +1,5 @@
 import type { SpiceLevel, WrappedInput } from "../shared/schema";
-import { analyze, type ReplyChecks, type ScannedEmail, type SentEmail } from "./analyze";
+import { analyze, type ScannedEmail, type SentEmail } from "./analyze";
 import { demoEmails, demoOutbox } from "./demo";
 
 export function buildInput(
@@ -10,7 +10,7 @@ export function buildInput(
     isDemo: boolean;
     threads: number;
     truncated: boolean;
-    outbox?: { sent: SentEmail[]; checks: ReplyChecks } | null;
+    outbox?: { sent: SentEmail[] } | null;
     now?: number;
   }
 ): WrappedInput {

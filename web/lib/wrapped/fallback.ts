@@ -22,7 +22,7 @@ interface Archetype {
   tagline: Tone<string>;
   traits: [string, string, string];
   aura: [string, string, string];
-  song: { title: string; artist: string; reason: string };
+  songs: Array<{ title: string; artist: string; reason: string }>;
 }
 
 const ARCHETYPES: Archetype[] = [
@@ -37,7 +37,11 @@ const ARCHETYPES: Archetype[] = [
     },
     traits: ["Closes Final Rounds", "Rejection-Proof", "Main Character Energy"],
     aura: ["#3DFFB5", "#FFE14D", "#FF3D7F"],
-    song: { title: "Celebration", artist: "Kool & The Gang", reason: "You earned the confetti." },
+    songs: [
+      { title: "Good as Hell", artist: "Lizzo", reason: "Offer in hand. You're allowed to be smug." },
+      { title: "Celebration", artist: "Kool & The Gang", reason: "You earned the confetti." },
+      { title: "Higher Love", artist: "Kygo, Whitney Houston", reason: "The year finally went up." },
+    ],
   },
   {
     match: (m) => m.time.lateNightPct >= 35,
@@ -50,7 +54,11 @@ const ARCHETYPES: Archetype[] = [
     },
     traits: ["Moonlight Autofiller", "Caffeine-Powered", "Allergic to Bedtime"],
     aura: ["#7B5CFF", "#FF3D7F", "#3DD9FF"],
-    song: { title: "Midnight City", artist: "M83", reason: "Your best work happens after the city sleeps." },
+    songs: [
+      { title: "Blinding Lights", artist: "The Weeknd", reason: "Your screen was the only light on at 2 AM." },
+      { title: "Midnight City", artist: "M83", reason: "Your best work happens after the city sleeps." },
+      { title: "Nights", artist: "Frank Ocean", reason: "Every night, another application." },
+    ],
   },
   {
     match: (m) => m.totals.applications >= 120,
@@ -63,7 +71,11 @@ const ARCHETYPES: Archetype[] = [
     },
     traits: ["Autofill Grandmaster", "Unbothered by Odds", "Cover Letter Speedrunner"],
     aura: ["#C6FF3D", "#FF6B1A", "#2D3BFF"],
-    song: { title: "Harder, Better, Faster, Stronger", artist: "Daft Punk", reason: "Your apply speed breaks the sound barrier." },
+    songs: [
+      { title: "Work", artist: "Rihanna, Drake", reason: "Work, work, work, work, work. Then apply again." },
+      { title: "Harder, Better, Faster, Stronger", artist: "Daft Punk", reason: "Your apply speed breaks the sound barrier." },
+      { title: "Started From the Bottom", artist: "Drake", reason: "Volume first, glory later." },
+    ],
   },
   {
     match: (m) => m.rates.interviewRatePct >= 12 && m.totals.interviews >= 2,
@@ -76,7 +88,11 @@ const ARCHETYPES: Archetype[] = [
     },
     traits: ["Resume That Converts", "Calendar Always Full", "Small Talk Specialist"],
     aura: ["#FFE14D", "#FF3D7F", "#7B5CFF"],
-    song: { title: "Confident", artist: "Demi Lovato", reason: "The interview invites prove it." },
+    songs: [
+      { title: "Essence", artist: "Wizkid, Tems", reason: "Recruiters can't resist the vibe." },
+      { title: "Levitating", artist: "Dua Lipa", reason: "Your interview invites are on another level." },
+      { title: "Confident", artist: "Demi Lovato", reason: "The callbacks prove it." },
+    ],
   },
   {
     match: (m) => m.rates.ghostRatePct >= 55,
@@ -89,7 +105,11 @@ const ARCHETYPES: Archetype[] = [
     },
     traits: ["Immune to Silence", "Follow-Up Specialist", "Unshakeable Faith"],
     aura: ["#3DD9FF", "#B79CFF", "#F5F5F0"],
-    song: { title: "Somebody That I Used to Know", artist: "Gotye", reason: "For every recruiter who vanished after the first call." },
+    songs: [
+      { title: "Hotline Bling", artist: "Drake", reason: "They used to email you. Now? Nothing." },
+      { title: "Somebody That I Used to Know", artist: "Gotye", reason: "For every recruiter who vanished after the first call." },
+      { title: "Last Last", artist: "Burna Boy", reason: "Ghosted again, still dancing." },
+    ],
   },
   {
     match: (m) => m.totals.applications > 0 && m.totals.applications < 30,
@@ -102,7 +122,11 @@ const ARCHETYPES: Archetype[] = [
     },
     traits: ["Reads Every Job Post", "Tailors Every Resume", "Zero Spray-and-Pray"],
     aura: ["#FF6B1A", "#FFE14D", "#3DFFB5"],
-    song: { title: "Lose Yourself", artist: "Eminem", reason: "One shot, one opportunity." },
+    songs: [
+      { title: "Alright", artist: "Kendrick Lamar", reason: "Few applications, total conviction." },
+      { title: "Lose Yourself", artist: "Eminem", reason: "One shot, one opportunity." },
+      { title: "Location", artist: "Khalid", reason: "You only apply where you want to be." },
+    ],
   },
 ];
 
@@ -117,7 +141,11 @@ const DEFAULT_ARCHETYPE: Archetype = {
   },
   traits: ["Bounces Back Fast", "Pipeline Builder", "Plot-Armor Resilience"],
   aura: ["#FF3D7F", "#7B5CFF", "#3DD9FF"],
-  song: { title: "Don't Stop Me Now", artist: "Queen", reason: "Nothing slowed you down this year." },
+  songs: [
+      { title: "Don't Stop Me Now", artist: "Queen", reason: "Nothing slowed you down this year." },
+      { title: "Unstoppable", artist: "Sia", reason: "Rejections bounced right off." },
+      { title: "Calm Down", artist: "Rema", reason: "Unbothered energy, all year." },
+    ],
 };
 
 const TRANSLATIONS: Tone<string[]> = {
@@ -301,7 +329,7 @@ export function buildFallbackCopy(input: WrappedInput): WrappedCopy {
             unhinged: out.replyRatePct >= 30 ? "The cold emails worked?!" : "Cold emails, colder replies",
           }),
           line: out.checked
-            ? `${out.replyRatePct}% of the people you cold-emailed wrote back.${
+            ? `${out.replyRatePct}% of the emails you started got a reply.${
                 out.dearHiringManager
                   ? ` You opened with "Dear Hiring Manager" ${plural(out.dearHiringManager, "time")}.`
                   : out.topCompany
@@ -379,7 +407,8 @@ export function buildFallbackCopy(input: WrappedInput): WrappedCopy {
       })}`,
       traits: arch.traits,
       auraColors: arch.aura,
-      themeSong: arch.song,
+      // Vary the pick so two people with the same archetype don't always get the same song.
+      themeSong: arch.songs[(t.applications + t.interviews) % arch.songs.length]!,
     },
     forecast: {
       headline: by(s, { linkedin_safe: "Next year: your year", crispy: "Next year's forecast", unhinged: "A prophecy" }),
