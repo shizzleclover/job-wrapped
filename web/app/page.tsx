@@ -8,6 +8,9 @@ export default function Home() {
         The browser extension posts your job hunt stats to <code className="rounded bg-black/5 px-1.5 py-0.5 dark:bg-white/10">/api/wrapped</code>{" "}
         and gets back the copy for each slide.
       </p>
+      <a href="/install" className="self-start rounded-full bg-zinc-900 px-5 py-3 text-sm font-semibold text-white dark:bg-white dark:text-zinc-900">
+        Get the extension
+      </a>
       <p className="text-sm text-zinc-500">
         {hasKey
           ? "Gemini key found. Copy is written by AI."

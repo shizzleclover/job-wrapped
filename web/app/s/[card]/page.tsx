@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { decodeShare } from "@/lib/wrapped/share";
 
-const INSTALL_URL = process.env.NEXT_PUBLIC_INSTALL_URL || "/";
+const INSTALL_URL = process.env.NEXT_PUBLIC_INSTALL_URL || "/install";
 
 export async function generateMetadata({ params }: { params: Promise<{ card: string }> }): Promise<Metadata> {
   const { card: token } = await params;
