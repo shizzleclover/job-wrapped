@@ -4,32 +4,63 @@ import type { Category } from "../shared/schema";
 // searches are broad, and that's how newsletters and welcome emails used to become "offers".
 const JOB = /\b(applica(tion|nt)s?|applied|applying|candidacy|candidates?|positions?|roles?|openings?|vacanc(y|ies)|interview(s|ing)?|recruit(er|ers|ing|ment)|hiring|resume|résumé|cv|job)\b/i;
 const NOISE =
-  /job alert|jobs? (you may|for you|matching|that might)|recommended (jobs|roles)|new (jobs|roles)|is hiring|jobs? digest|weekly digest|newsletter|webinar|unsubscribe from (this|these) alerts?|people are viewing|complete your profile|\btips\b|how to|negotiat|% off|discount|promo code|sale ends|course|masterclass|bootcamp|badge/i;
+  /job alert|jobs? (you may|for you|matching|that might)|recommended (jobs|roles)|new (jobs|roles)|is hiring|jobs? digest|weekly digest|newsletter|webinar|unsubscribe from (this|these) alerts?|people are viewing|complete your profile|\btips\b|how to|negotiat|% off|discount|promo code|sale ends|course|masterclass|badge|top (stories|answers|posts)|trending|in your network|people you may know/i;
+
+// Senders that talk about jobs without being employers: digests, communities, event and newsletter platforms.
+const NOT_EMPLOYER_DOMAIN =
+  /(^|\.)(quora|medium|substack|beehiiv|mailchimp(app)?|mcsv|convertkit|kit|ghost|reddit|redditmail|teamblind|fishbowlapp|glassdoor|lu\.ma|luma(-mail)?|eventbrite|meetup|devpost|mlh|devfolio|dorahacks|taikai|hackerearth-mail|discord|slack|circle|skool|mightynetworks|producthunt|facebookmail|instagram|youtube)\.[a-z.]+$/i;
+const NOT_EMPLOYER_NAME = /digest|newsletter|community|weekly|daily|insider|news\b|events?\b|meetup|webinar|podcast|jobs? alerts?|job board|careers? (tips|advice)|blog/i;
+// LinkedIn and Indeed send real confirmations from these, and everything else (alerts, news) from other addresses.
+const JOB_BOARD_CONFIRMATIONS = /^(jobs-noreply@linkedin\.com|.*@indeed\.com|.*@indeedemail\.com)$/i;
+
+const PROGRAM =
+  /hackathon|hack ?week|fellowship|accelerator|incubator|bootcamp|cohort|scholarship|\bgrant\b|ambassador|community (application|membership)|mentorship (program|programme)|(startup|founder|builder|developer|leadership|training|residency) (program|programme)|demo day|summit|conference|meetup|devfest|\bevent\b/i;
+// Real jobs that use "program" words
+const JOB_PROGRAM = /(internship|graduate|early careers?|apprenticeship|new grad|rotational|trainee) (program|programme)/i;
+
 const REJECTED =
   /unfortunately|we regret|regret to inform|after careful consideration|(won[’']?t|will not|not) be (moving|proceeding|progressing|advancing)|not (be )?(moving|move|proceed(ing)?) forward|decided (not to|to (move forward|proceed|pursue|go) with (other|another))|other candidates|not to proceed|position has been filled|no longer (being )?consider|not (been )?selected|unable to (offer you|move forward|proceed)|not a (fit|match) (at this time|for)/i;
 const OFFER =
-  /(pleased|excited|delighted|happy|thrilled) to (extend|offer) (you )?(an? |the |this )?(formal |verbal |written )?(offer|position|role|job)|offer letter|formal offer|verbal offer|offer of employment|extend(ing)? (you )?an offer|your (job )?offer (from|letter|details|package)/i;
+  /(pleased|excited|delighted|happy|thrilled) to (extend|offer) (you )?(an? |the |this )?(formal |verbal |written )?(offer|position|role|job)|(your|attached|find|enclosed)[^.]{0,25}offer letter|offer letter (is )?(attached|enclosed|for you)|formal offer|verbal offer|offer of employment|extend(ing)? (you )?an offer|your (job )?offer (from|letter|details|package)/i;
 const INTERVIEW =
   /(invite|invitation|schedule|scheduling|book|set up|availability|arrange).{0,50}(interview|phone screen|screening call|recruiter (call|chat|screen)|hiring manager|technical (call|round))|interview (invitation|request|confirmation|scheduled|invite|slot)|phone screen|screening call|onsite interview|final[- ]round|next round of (interviews|the process)|move(d)? (you )?forward to the next (stage|round)/i;
 const ASSESSMENT = /coding challenge|take[- ]home (assessment|assignment|challenge|test|exercise)|hackerrank|codesignal|codility|testgorilla|technical (test|exercise|assessment)/i;
 const GENERIC_ASSESSMENT = /(online|skills?) assessment/i;
 const APPLIED =
-  /thank(s| you) for (applying|your application|your interest in (the|our|joining))|application (has been |was )?(received|submitted|sent|confirmation|complete)|received your application|your application (to|for|was sent|is under review|has been)|we('ve| have) received your (application|resume|cv)|successfully applied|you applied (to|for)/i;
+  /thank(s| you) for (applying|your (job )?application|your interest in (the|our|joining|working))|application (has been |was )?(received|submitted|sent|confirmation|complete)|received your (job )?application|your application (to|for|was sent|is under review|has been|is in)|we('ve| have)? (got|received) your (application|resume|cv)|successfully (applied|submitted)|you('ve| have)? applied (to|for)|indeed application:|application for .{2,60} (received|submitted)|thanks for submitting|submission (received|confirmed)/i;
 
-export function classify(subject: string, snippet: string): Category | null {
+export interface Verdict {
+  label: Category | null;
+  /** Human-readable reason, shown in the scan report */
+  reason: string;
+  /** True when the rules are unsure and a second opinion would help */
+  unsure: boolean;
+}
+
+export function isNotEmployer(senderName: string, senderEmail: string): boolean {
+  const email = senderEmail.toLowerCase();
+  if (JOB_BOARD_CONFIRMATIONS.test(email)) return false;
+  const domain = email.split("@")[1] ?? "";
+  return NOT_EMPLOYER_DOMAIN.test(domain) || /linkedin\.com$/.test(domain) || NOT_EMPLOYER_NAME.test(senderName);
+}
+
+export function classify(subject: string, snippet: string, senderName = "", senderEmail = ""): Verdict {
   const text = `${subject} ${snippet}`;
-  if (NOISE.test(text)) return null;
+  if (isNotEmployer(senderName, senderEmail)) return { label: null, reason: "Sender is a digest, community or platform", unsure: false };
+  if (NOISE.test(text)) return { label: null, reason: "Looks like a newsletter, alert or promotion", unsure: false };
+  if (PROGRAM.test(text) && !JOB_PROGRAM.test(text) && !/\b(engineer|developer|designer|manager|analyst|intern)\b/i.test(text))
+    return { label: "PROGRAM", reason: "Hackathon, fellowship or program", unsure: false };
   const job = JOB.test(text);
-  if (REJECTED.test(text) && job) return "REJECTED";
-  if (OFFER.test(text) && (job || /offer letter|offer of employment/i.test(text))) return "OFFER";
-  if (INTERVIEW.test(text)) return "INTERVIEW";
-  if (ASSESSMENT.test(text) || (GENERIC_ASSESSMENT.test(text) && job)) return "ASSESSMENT";
-  if (APPLIED.test(text)) return "APPLIED";
-  return null;
+  if (REJECTED.test(text) && job) return { label: "REJECTED", reason: "Rejection wording", unsure: false };
+  if (OFFER.test(text) && (job || /offer letter|offer of employment/i.test(text))) return { label: "OFFER", reason: "Offer wording", unsure: true };
+  if (INTERVIEW.test(text)) return { label: "INTERVIEW", reason: "Interview invite wording", unsure: true };
+  if (ASSESSMENT.test(text) || (GENERIC_ASSESSMENT.test(text) && job)) return { label: "ASSESSMENT", reason: "Assessment wording", unsure: false };
+  if (APPLIED.test(text)) return { label: "APPLIED", reason: "Application confirmation wording", unsure: false };
+  return { label: null, reason: job ? "Mentions a job but no clear outcome" : "No job signal", unsure: job };
 }
 
 const SENT_JOB =
-  /résumé|resume|\bcv\b|cover letter|portfolio|(the|this|your|an?) (role|position|opening|vacancy|internship)|job (opening|opportunity|posting|application)|internship|hiring|apply(ing)? (for|to)|application (for|to)|referral|refer me/i;
+  /résumé|resume|\bcv\b|cover letter|portfolio|\b(role|position|opening|vacancy|internship|opportunit(y|ies)|interview|recruiter|hiring|job|apply|applying|applied|application|referral|refer me)\b/i;
 
 /** Signals for emails the user sent. Null when it doesn't look job-related. */
 export function classifySent(subject: string, snippet: string) {

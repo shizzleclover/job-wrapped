@@ -4,33 +4,7 @@ import { google, type GoogleLanguageModelOptions } from "@ai-sdk/google";
 import { WrappedCopySchema, WrappedInputSchema, type WrappedCopy, type WrappedInput, type WrappedResponse } from "@/lib/wrapped/schema";
 import { buildFallbackCopy, hourLabel } from "@/lib/wrapped/fallback";
 import { findTrack } from "@/lib/spotify";
-
-const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-const MAX_BODY_BYTES = 100_000;
-const RATE_LIMIT = { requests: 20, windowMs: 10 * 60_000 };
-const ALLOWED_ORIGIN = /^(chrome-extension|moz-extension):\/\/[\w-]+$|^http:\/\/localhost(:\d+)?$/;
-
-function cors(req: NextRequest): Record<string, string> {
-  const origin = req.headers.get("origin");
-  if (!origin || !ALLOWED_ORIGIN.test(origin)) return {};
-  return {
-    "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-    Vary: "Origin",
-  };
-}
-
-// In-memory and per-instance: enough to stop a stray script from burning the Gemini key.
-const hits = new Map<string, number[]>();
-function rateLimited(req: NextRequest): boolean {
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
-  const now = Date.now();
-  const recent = (hits.get(ip) ?? []).filter((t) => now - t < RATE_LIMIT.windowMs);
-  recent.push(now);
-  hits.set(ip, recent);
-  return recent.length > RATE_LIMIT.requests;
-}
+import { cors, MODEL, rateLimited, tooLarge } from "@/lib/http";
 
 const TONES: Record<WrappedInput["spiceLevel"], string> = {
   linkedin_safe: "Clever, upbeat and recruiter-friendly. Celebrate their resilience. Gentle humor only, never mean.",
@@ -92,6 +66,9 @@ function facts(input: WrappedInput): string {
     rt.slowestResponse && `Slowest reply: ${rt.slowestResponse.company}, ${rt.slowestResponse.days} days.`,
     rt.avgDaysToRejection !== null && `Average wait for a rejection: ${rt.avgDaysToRejection} days.`,
     ...outreachFacts(input.metrics.outreach),
+    input.metrics.programs.count > 0
+      ? `Side quests (not jobs): ${input.metrics.programs.count} hackathons, fellowships or programs${input.metrics.programs.names.length ? `, including ${input.metrics.programs.names.join(", ")}` : ""}.`
+      : "No hackathons, fellowships or programs.",
   ];
   return lines.filter(Boolean).map((l) => `- ${l}`).join("\n");
 }
@@ -115,10 +92,10 @@ export async function OPTIONS(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const headers = cors(req);
-  if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) {
+  if (tooLarge(req)) {
     return NextResponse.json({ error: "Payload too large" }, { status: 413, headers });
   }
-  if (rateLimited(req)) {
+  if (rateLimited(req, "wrapped")) {
     return NextResponse.json({ error: "Too many requests, try again in a few minutes" }, { status: 429, headers });
   }
 

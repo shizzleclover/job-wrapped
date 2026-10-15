@@ -1,10 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
-import { ArrowRight, Check, Loader2, Lock, Sparkles, X } from "lucide-react";
-import type { SpiceLevel } from "../../shared/schema";
+import { ArrowRight, Check, FileDown, Loader2, Lock, Sparkles, X } from "lucide-react";
+import type { ClassifyLabel, SpiceLevel } from "../../shared/schema";
+import type { SentEmail } from "../../lib/analyze";
+import { downloadReport, scanReportCsv, type ReviewedItem } from "../../lib/report";
+import { aiCandidates, applyAi, REVIEW_GROUPS, untick } from "../../lib/review";
 import { buildDemoInput, buildInput } from "../../lib/input";
 import { saveWrapped } from "../../lib/storage";
-import { scanGmail, type ScanProgress } from "./scraper";
+import { scanGmail, type ScanProgress, type ScanResult } from "./scraper";
 import "./style.css";
 
 const MIN_EMAILS = 5;
@@ -19,8 +22,12 @@ type Status =
   | { step: "idle" }
   | { step: "setup" }
   | { step: "scanning"; progress: ScanProgress }
+  | { step: "checking"; count: number }
+  | { step: "review" }
   | { step: "few"; found: number }
   | { step: "done" };
+
+const JOB = new Set(["APPLIED", "REJECTED", "INTERVIEW", "ASSESSMENT", "OFFER"]);
 
 async function openStory(id: string) {
   await browser.runtime.sendMessage({ type: "open-wrapped", id });
@@ -32,6 +39,28 @@ function GmailOverlayApp() {
   const [shareSnippets, setShareSnippets] = useState(true);
   const [includeSent, setIncludeSent] = useState(true);
   const [lastId, setLastId] = useState<string | null>(null);
+  const [reviewed, setReviewed] = useState<ReviewedItem[]>([]);
+  const [unticked, setUnticked] = useState<Set<string>>(new Set());
+  const lastScan = useRef<{ scan: ScanResult; sent: SentEmail[] | null } | null>(null);
+
+  const report = () => downloadReport(scanReportCsv(untick(reviewed, unticked), lastScan.current?.sent ?? null));
+
+  const finish = async (items: ReviewedItem[]) => {
+    const scan = lastScan.current!.scan;
+    await play(
+      buildInput(
+        items.map((i) => i.email),
+        {
+          spiceLevel: spice,
+          shareSnippets,
+          isDemo: false,
+          threads: scan.threads,
+          truncated: scan.truncated,
+          outbox: scan.sent ? { sent: scan.sent, checks: scan.replyChecks } : null,
+        }
+      )
+    );
+  };
 
   const play = async (input: ReturnType<typeof buildInput>) => {
     const id = crypto.randomUUID();
@@ -45,17 +74,23 @@ function GmailOverlayApp() {
     setStatus({ step: "scanning", progress: { label: "Warming up", pct: 0, found: { APPLIED: 0, REJECTED: 0, INTERVIEW: 0, OFFER: 0, SENT: 0 } } });
     try {
       const scan = await scanGmail((progress) => setStatus({ step: "scanning", progress }), { includeSent });
-      if (scan.emails.length < MIN_EMAILS) return setStatus({ step: "few", found: scan.emails.length });
-      await play(
-        buildInput(scan.emails, {
-          spiceLevel: spice,
-          shareSnippets,
-          isDemo: false,
-          threads: scan.threads,
-          truncated: scan.truncated,
-          outbox: scan.sent ? { sent: scan.sent, checks: scan.replyChecks } : null,
-        })
-      );
+      lastScan.current = { scan, sent: scan.sent };
+
+      // Second opinion on the unsure rows, only when the user allowed email previews to be shared.
+      let labels: Record<string, ClassifyLabel> = {};
+      const candidates = shareSnippets ? aiCandidates(scan.items) : [];
+      if (candidates.length) {
+        setStatus({ step: "checking", count: candidates.length });
+        labels = ((await browser.runtime.sendMessage({ type: "classify", items: candidates }).catch(() => ({}))) ?? {}) as Record<string, ClassifyLabel>;
+      }
+      const items = applyAi(scan.items, labels);
+      setReviewed(items);
+      setUnticked(new Set());
+
+      const jobs = items.filter((i) => JOB.has(i.email.category)).length;
+      if (jobs < MIN_EMAILS) return setStatus({ step: "few", found: jobs });
+      if (items.some((i) => REVIEW_GROUPS.some((g) => g.category === i.email.category))) return setStatus({ step: "review" });
+      await finish(items);
     } catch (err) {
       console.error("[job-wrapped]", err);
       setStatus({ step: "setup" });
@@ -81,7 +116,7 @@ function GmailOverlayApp() {
             <span className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-[#C6FF3D]">
               <Sparkles className="h-4 w-4" /> Job Hunt Wrapped
             </span>
-            {status.step !== "scanning" && (
+            {status.step !== "scanning" && status.step !== "checking" && (
               <button onClick={() => setStatus({ step: "idle" })} aria-label="Close" className="cursor-pointer rounded-full p-1 text-white/50 hover:bg-white/10 hover:text-white">
                 <X className="h-4 w-4" />
               </button>
@@ -124,8 +159,8 @@ function GmailOverlayApp() {
               <label className="flex cursor-pointer items-start gap-3 rounded-2xl bg-white/[0.04] p-3">
                 <input type="checkbox" checked={shareSnippets} onChange={(e) => setShareSnippets(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[#C6FF3D]" />
                 <span className="text-xs leading-relaxed text-white/70">
-                  <span className="block font-semibold text-white">Let the AI read a few email previews</span>
-                  Sharper jokes. Up to 36 subject lines and previews from emails companies sent you go to the AI writer. Off: only your stats, company and role names.
+                  <span className="block font-semibold text-white">Let the AI read email previews</span>
+                  Sharper jokes, and a second opinion on unclear emails. Subject lines and previews from emails companies sent you go to the AI. Off: only your stats, company and role names.
                 </span>
               </label>
 
@@ -144,6 +179,33 @@ function GmailOverlayApp() {
 
           {status.step === "scanning" && <Scanning progress={status.progress} />}
 
+          {status.step === "checking" && (
+            <div className="space-y-3 p-5">
+              <div className="flex items-center gap-3">
+                <Loader2 className="h-5 w-5 shrink-0 animate-spin text-[#C6FF3D]" />
+                <span className="text-[15px] font-bold">Double-checking {status.count} unclear emails…</span>
+              </div>
+              <p className="text-[11px] leading-relaxed text-white/45">Making sure newsletters and community posts don't count as offers.</p>
+            </div>
+          )}
+
+          {status.step === "review" && (
+            <Review
+              items={reviewed}
+              unticked={unticked}
+              onToggle={(key) =>
+                setUnticked((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(key)) next.delete(key);
+                  else next.add(key);
+                  return next;
+                })
+              }
+              onReport={report}
+              onConfirm={() => finish(untick(reviewed, unticked))}
+            />
+          )}
+
           {status.step === "few" && (
             <div className="space-y-4 p-5">
               <h2 className="text-[22px] font-extrabold leading-tight tracking-tight">
@@ -159,6 +221,7 @@ function GmailOverlayApp() {
               <button onClick={() => setStatus({ step: "setup" })} className="w-full cursor-pointer rounded-full bg-white/10 py-3 text-sm font-bold">
                 Back
               </button>
+              {reviewed.length > 0 && <ReportLink onClick={report} />}
             </div>
           )}
 
@@ -174,11 +237,68 @@ function GmailOverlayApp() {
               <button onClick={() => setStatus({ step: "setup" })} className="w-full cursor-pointer rounded-full bg-white/10 py-3 text-sm font-bold">
                 Scan again
               </button>
+              {reviewed.length > 0 && <ReportLink onClick={report} />}
             </div>
           )}
         </div>
       )}
     </div>
+  );
+}
+
+function Review({
+  items,
+  unticked,
+  onToggle,
+  onReport,
+  onConfirm,
+}: {
+  items: ReviewedItem[];
+  unticked: Set<string>;
+  onToggle: (key: string) => void;
+  onReport: () => void;
+  onConfirm: () => void;
+}) {
+  const groups = REVIEW_GROUPS.map((g) => ({ ...g, items: items.filter((i) => i.email.category === g.category) })).filter((g) => g.items.length);
+  return (
+    <div className="space-y-4 p-5">
+      <div>
+        <h2 className="text-[22px] font-extrabold leading-tight tracking-tight">Quick check</h2>
+        <p className="mt-1 text-[13px] text-white/60">Untick anything we got wrong. It won't count.</p>
+      </div>
+      <div className="max-h-[300px] space-y-4 overflow-y-auto pr-1">
+        {groups.map((g) => (
+          <div key={g.category}>
+            <div className="mb-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-white/50">
+              {g.title} · {g.items.filter((i) => !unticked.has(i.email.key)).length}
+            </div>
+            <div className="space-y-1.5">
+              {g.items.map(({ email: e }) => (
+                <label key={e.key} className="flex cursor-pointer items-start gap-2.5 rounded-xl bg-white/[0.04] p-2.5 hover:bg-white/[0.07]">
+                  <input type="checkbox" checked={!unticked.has(e.key)} onChange={() => onToggle(e.key)} className="mt-0.5 h-4 w-4 shrink-0 accent-[#C6FF3D]" />
+                  <span className="min-w-0">
+                    <span className="block truncate text-[13px] font-bold">{e.company ?? (e.senderName || "Unknown sender")}</span>
+                    <span className="block truncate text-[11px] text-white/55">{e.subject}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <button onClick={onConfirm} className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-[#C6FF3D] py-3.5 text-sm font-extrabold text-[#0B0B10] transition hover:brightness-95">
+        Looks right, play it <ArrowRight className="h-4 w-4" />
+      </button>
+      <ReportLink onClick={onReport} />
+    </div>
+  );
+}
+
+function ReportLink({ onClick }: { onClick: () => void }) {
+  return (
+    <button onClick={onClick} className="flex w-full cursor-pointer items-center justify-center gap-1.5 text-[12px] font-semibold text-white/55 hover:text-white">
+      <FileDown className="h-3.5 w-3.5" /> Download scan report (stays on your computer)
+    </button>
   );
 }
 

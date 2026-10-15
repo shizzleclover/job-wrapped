@@ -4,7 +4,8 @@ import { z } from "zod";
 export const SpiceLevelSchema = z.enum(["linkedin_safe", "crispy", "unhinged"]);
 export type SpiceLevel = z.infer<typeof SpiceLevelSchema>;
 
-export const CategorySchema = z.enum(["APPLIED", "REJECTED", "INTERVIEW", "ASSESSMENT", "OFFER", "OTHER"]);
+/** PROGRAM: hackathons, fellowships, bootcamps and other non-job applications. They get their own slide. */
+export const CategorySchema = z.enum(["APPLIED", "REJECTED", "INTERVIEW", "ASSESSMENT", "OFFER", "PROGRAM", "OTHER"]);
 export type Category = z.infer<typeof CategorySchema>;
 
 const Count = z.number().int().min(0).max(1_000_000);
@@ -103,6 +104,8 @@ export const MetricsSchema = z.object({
   }),
   /** Null when the user chose not to scan sent mail */
   outreach: OutreachSchema.nullable(),
+  /** Hackathons, fellowships, accelerators, bootcamps: applications that aren't jobs */
+  programs: z.object({ count: Count, names: z.array(Name).max(8) }),
   responseTimes: z.object({
     fastestRejection: z.object({ company: Name, hours: z.number().min(0) }).nullable(),
     slowestResponse: z.object({ company: Name, days: z.number().min(0) }).nullable(),
@@ -151,6 +154,9 @@ export const WrappedCopySchema = z.object({
   weekday: z.object({ line: line("One sentence about their favorite weekday to apply and weekend habits") }),
   platforms: z.object({ line: line("One sentence about the hiring platforms (ATS) they fought most") }),
   companies: z.object({ line: line("One sentence about the companies they chased, mention a real one") }),
+  sideQuests: z.object({
+    line: line("One sentence about the hackathons, fellowships and programs they also applied to. If zero, joke that they stayed focused on jobs."),
+  }),
   outreach: z.object({
     headline: line("2-6 word reaction to the cold emails and cover letters they sent. If there is no outreach data, joke that they let their inbox do the work."),
     line: line("One sentence about their reply rate, follow-ups or 'Dear Hiring Manager' habit"),
@@ -245,3 +251,26 @@ export const ShareCardSchema = z.object({
   st: CardStyleSchema,
 });
 export type ShareCard = z.infer<typeof ShareCardSchema>;
+
+/** Second opinion on emails the rules weren't sure about. Only sent when the user allows email previews. */
+export const ClassifyLabelSchema = z.enum(["APPLIED", "REJECTED", "INTERVIEW", "ASSESSMENT", "OFFER", "PROGRAM", "NOT_JOB"]);
+export type ClassifyLabel = z.infer<typeof ClassifyLabelSchema>;
+
+export const ClassifyRequestSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        id: z.string().max(80),
+        from: z.string().max(120),
+        subject: z.string().max(200),
+        snippet: z.string().max(200),
+      })
+    )
+    .max(120),
+});
+export type ClassifyRequest = z.infer<typeof ClassifyRequestSchema>;
+
+export const ClassifyResponseSchema = z.object({
+  labels: z.array(z.object({ id: z.string(), label: ClassifyLabelSchema })),
+});
+export type ClassifyResponse = z.infer<typeof ClassifyResponseSchema>;

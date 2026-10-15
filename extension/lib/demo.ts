@@ -75,6 +75,7 @@ function email(r: () => number, i: number, company: string, sender: string, cate
     INTERVIEW: [`Invitation to interview: ${role}`, `We loved your application and would like to schedule an interview with our team this week.`],
     ASSESSMENT: [`Next step: coding challenge`, `Please complete the take-home assessment within 5 days.`],
     OFFER: [`Your offer from ${company}`, `We're thrilled to extend an offer for the ${role} position. Your offer letter is attached.`],
+    PROGRAM: [`Thanks for applying to ${company}`, "We've received your hackathon application. Teams will be announced soon."],
     OTHER: ["Following up", "Just checking in on your application."],
   };
   const [subject, snippet] = copy[category];
@@ -117,6 +118,9 @@ export function demoEmails(now = Date.now()): ScannedEmail[] {
   out.push(email(r, out.length, "Microsoft", "noreply@myworkday.com", "APPLIED", t0, "Senior Software Engineer"));
   out.push(email(r, out.length, "Microsoft", "noreply@myworkday.com", "REJECTED", t0 + 3.2 * 3_600_000, "Senior Software Engineer"));
   out.push(email(r, out.length, "Paystack", "talent@paystack.com", "OFFER", now - 9 * DAY, "Product Engineer"));
+  for (const [i, program] of ["HackLagos", "Google Developer Groups DevFest", "Ventures Platform Fellowship", "ETHGlobal Online", "Kaggle Days"].entries()) {
+    out.push({ ...email(r, out.length, program, "team@hackathon.dev", "PROGRAM", now - (30 + i * 40) * DAY, ""), role: null, company: program });
+  }
 
   return out.map((e) => ({ ...e, platform: platformOf(e.senderEmail) }));
 }

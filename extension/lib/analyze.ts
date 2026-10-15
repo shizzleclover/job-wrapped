@@ -169,10 +169,14 @@ export function analyzeOutreach(sent: SentEmail[], received: ScannedEmail[], che
 }
 
 export function analyze(
-  emails: ScannedEmail[],
+  all: ScannedEmail[],
   now = Date.now(),
   outbox: { sent: SentEmail[]; checks: ReplyChecks } | null = null
 ): { metrics: Metrics; samples: SampleEmail[] } {
+  // Programs (hackathons, fellowships…) and anything unlabelled stay out of the job numbers.
+  const emails = all.filter((e) => e.category !== "PROGRAM" && e.category !== "OTHER");
+  const programs = all.filter((e) => e.category === "PROGRAM");
+  const programNames = ranked(countBy(programs, (e) => e.company), 8).map((p) => p.name);
   const byCat = (c: Category) => emails.filter((e) => e.category === c);
   const applied = byCat("APPLIED");
   const outcomeOnly = (c: Category) => byCat(c).filter((e) => !e.company).length;
@@ -331,6 +335,7 @@ export function analyze(
       all: uniqueRoles.slice(0, 40).map((r) => r.title),
     },
     outreach: outbox ? analyzeOutreach(outbox.sent, emails, outbox.checks) : null,
+    programs: { count: programs.length, names: programNames },
     responseTimes: {
       fastestRejection: fastest ? { company: fastest.company, hours: Math.round(fastest.days * 24 * 10) / 10 } : null,
       slowestResponse: slowest && slowest.days >= 7 ? { company: slowest.company, days: Math.round(slowest.days) } : null,

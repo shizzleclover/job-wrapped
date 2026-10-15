@@ -42,8 +42,9 @@ export default function Privacy() {
         <ul className="mt-2 list-disc space-y-2 pl-5">
           <li>Your stats: counts, percentages, dates and times, plus the names of companies, roles and hiring platforms.</li>
           <li>
-            Only if <strong>Let the AI read a few email previews</strong> is on: up to 36 subject lines and previews from emails companies sent
-            you.
+            Only if <strong>Let the AI read email previews</strong> is on: subject lines and previews from emails companies sent you. They&apos;re
+            used to write sharper jokes and to double-check emails the extension couldn&apos;t sort on its own (for example, telling a real offer
+            from a newsletter that mentions one).
           </li>
         </ul>
         <p className="mt-3">

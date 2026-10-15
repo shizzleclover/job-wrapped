@@ -281,6 +281,14 @@ export function buildFallbackCopy(input: WrappedInput): WrappedCopy {
         ? `${topCompany} topped your list across ${plural(t.companies, "company", "companies")}.`
         : `${plural(t.companies, "company", "companies")} got to know your name.`,
     },
+    sideQuests: {
+      line:
+        m.programs.count > 0
+          ? `You also applied to ${plural(m.programs.count, "hackathon, fellowship or program", "hackathons, fellowships and programs")}${
+              m.programs.names[0] ? `, including ${m.programs.names[0]}` : ""
+            }. ${by(s, { linkedin_safe: "Always learning.", crispy: "Side quests count too.", unhinged: "As if job hunting wasn't enough of a hobby." })}`
+          : by(s, { linkedin_safe: "Laser-focused on the job hunt.", crispy: "Zero side quests. Main story only.", unhinged: "No hackathons, no fellowships, just pure job-hunt tunnel vision." }),
+    },
     outreach: !out || out.sent === 0
       ? {
           headline: by(s, { linkedin_safe: "You let your work speak", crispy: "Zero cold emails", unhinged: "Not one cold email" }),

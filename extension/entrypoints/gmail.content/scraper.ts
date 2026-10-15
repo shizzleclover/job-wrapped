@@ -1,4 +1,4 @@
-import { classify, classifySent, extractCompany, extractRole, platformFor } from "../../lib/classify";
+import { classify, classifySent, extractCompany, extractRole, platformFor, type Verdict } from "../../lib/classify";
 import type { ReplyChecks, ScannedEmail, SentEmail } from "../../lib/analyze";
 
 export interface ScanProgress {
@@ -7,8 +7,14 @@ export interface ScanProgress {
   found: Record<"APPLIED" | "REJECTED" | "INTERVIEW" | "OFFER" | "SENT", number>;
 }
 
+/** Every received row we looked at, kept or not, with why. Feeds the AI check, the review and the scan report. */
+export interface ScanItem {
+  email: ScannedEmail;
+  verdict: Verdict;
+}
+
 export interface ScanResult {
-  emails: ScannedEmail[];
+  items: ScanItem[];
   sent: SentEmail[] | null;
   /** Which cold contacts we checked for a reply, and which of them wrote back */
   replyChecks: ReplyChecks;
@@ -17,7 +23,8 @@ export interface ScanResult {
 }
 
 const MAX_PAGES = 5;
-const WINDOW = "newer_than:1y -from:me";
+// Digests, communities and promos live in these tabs; real company emails land in Primary or Updates.
+const WINDOW = "newer_than:1y -from:me -category:promotions -category:social -category:forums";
 const REPLY_BATCH = 15;
 const MAX_REPLY_CHECKS = 60;
 
@@ -30,7 +37,7 @@ interface Step {
 const RECEIVED: Step[] = [
   {
     label: "Finding every application you sent",
-    q: `("thank you for applying" OR "thanks for applying" OR "application received" OR "received your application" OR "your application to" OR "your application was sent" OR "application submitted" OR "application is under review") ${WINDOW}`,
+    q: `("thank you for applying" OR "thanks for applying" OR "thank you for your application" OR "thanks for your application" OR "application received" OR "received your application" OR "we got your application" OR "your application to" OR "your application for" OR "your application was sent" OR "application submitted" OR "application confirmation" OR "application is under review" OR "successfully submitted" OR "Indeed Application" OR "you applied" OR "thanks for your interest") ${WINDOW}`,
     pages: MAX_PAGES,
   },
   {
@@ -48,12 +55,17 @@ const RECEIVED: Step[] = [
     q: `("offer letter" OR "pleased to offer you" OR "excited to offer you" OR "pleased to extend" OR "offer of employment") ${WINDOW}`,
     pages: 1,
   },
+  {
+    label: "Spotting your side quests",
+    q: `(hackathon OR fellowship OR accelerator OR bootcamp OR cohort OR scholarship) (application OR applying OR applied OR accepted OR registration) ${WINDOW}`,
+    pages: 2,
+  },
 ];
 
 const SENT: Step = {
   label: "Reading your outreach and cover letters",
-  q: `in:sent newer_than:1y (resume OR CV OR "cover letter" OR portfolio OR "the role" OR "the position" OR "job opening" OR internship OR referral OR "applying for" OR "application for")`,
-  pages: 3,
+  q: `in:sent newer_than:1y (resume OR CV OR "cover letter" OR portfolio OR role OR position OR opportunity OR internship OR referral OR application OR applying OR interview OR hiring OR job OR recruiter)`,
+  pages: MAX_PAGES,
 };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -133,22 +145,22 @@ function rowParts(row: HTMLTableRowElement, me: string | null): RowParts | null 
   return { key: threadId ?? `${people[0]?.email ?? ""}|${subject}|${timestamp ?? ""}`, people, subject, snippet: snippet.slice(0, 200), timestamp };
 }
 
-function parseReceived(p: RowParts): ScannedEmail | null {
-  const category = classify(p.subject, p.snippet);
-  if (!category) return null;
+function parseReceived(p: RowParts): ScanItem {
   const sender = p.people[0] ?? { name: "", email: "" };
-  return {
+  const verdict = classify(p.subject, p.snippet, sender.name, sender.email);
+  const email: ScannedEmail = {
     key: p.key,
     senderName: sender.name,
     senderEmail: sender.email,
     subject: p.subject,
     snippet: p.snippet,
     timestamp: p.timestamp,
-    category,
+    category: verdict.label ?? "OTHER",
     company: extractCompany(sender.name, sender.email, p.subject, p.snippet),
     role: extractRole(p.subject, p.snippet),
     platform: platformFor(sender.email),
   };
+  return { email, verdict };
 }
 
 function parseSent(p: RowParts): SentEmail | null {
@@ -170,7 +182,7 @@ function parseSent(p: RowParts): SentEmail | null {
 export async function scanGmail(onProgress: (p: ScanProgress) => void, opts: { includeSent: boolean }): Promise<ScanResult> {
   const originalHash = window.location.hash || "#inbox";
   const me = selfEmail();
-  const received = new Map<string, ScannedEmail>();
+  const received = new Map<string, ScanItem>();
   const sent = new Map<string, SentEmail>();
   const replied = new Set<string>();
   let checkedContacts: string[] = [];
@@ -182,9 +194,9 @@ export async function scanGmail(onProgress: (p: ScanProgress) => void, opts: { i
 
   const report = (label: string) => {
     const found = { APPLIED: 0, REJECTED: 0, INTERVIEW: 0, OFFER: 0, SENT: sent.size };
-    for (const e of received.values()) {
+    for (const { email: e } of received.values()) {
       if (e.category === "ASSESSMENT") found.INTERVIEW++;
-      else if (e.category !== "OTHER") found[e.category]++;
+      else if (e.category !== "OTHER" && e.category !== "PROGRAM") found[e.category]++;
     }
     onProgress({ label, pct: Math.round((done / totalSteps) * 100), found });
   };
@@ -211,9 +223,8 @@ export async function scanGmail(onProgress: (p: ScanProgress) => void, opts: { i
   try {
     for (const step of RECEIVED) {
       await crawl(step, (p) => {
-        const email = parseReceived(p);
-        if (!email || received.has(email.key)) return false;
-        received.set(email.key, email);
+        if (received.has(p.key)) return false;
+        received.set(p.key, parseReceived(p));
         return true;
       });
     }
@@ -227,7 +238,7 @@ export async function scanGmail(onProgress: (p: ScanProgress) => void, opts: { i
       });
 
       // Did the people you reached out to ever write back? Ask Gmail directly, in batches.
-      const known = new Set([...received.values()].map((e) => e.senderEmail));
+      const known = new Set([...received.values()].filter((i) => i.email.category !== "OTHER").map((i) => i.email.senderEmail));
       const contacts = [...new Set([...sent.values()].flatMap((s) => s.recipients.map((r) => r.email)))].filter((e) => !known.has(e));
       const checks = contacts.slice(0, MAX_REPLY_CHECKS);
       checkedContacts = checks;
@@ -248,7 +259,7 @@ export async function scanGmail(onProgress: (p: ScanProgress) => void, opts: { i
   done = totalSteps;
   report("Crunching the numbers");
   return {
-    emails: [...received.values()],
+    items: [...received.values()],
     sent: opts.includeSent ? [...sent.values()] : null,
     replyChecks: { checked: checkedContacts, replied: [...replied] },
     threads: received.size + sent.size,

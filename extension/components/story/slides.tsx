@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
-import { Ghost, Mail, MailCheck, Sparkles, Timer, Zap } from "lucide-react";
+import { Ghost, Mail, MailCheck, Sparkles, Swords, Timer, Zap } from "lucide-react";
 import { siSpotify } from "simple-icons";
 import type { SpiceLevel, Track, WrappedCopy, WrappedInput } from "../../shared/schema";
 import { hourLabel, plural } from "../../shared/fallback";
@@ -363,6 +363,43 @@ export function buildSlides(ctx: SlideContext): SlideDef[] {
           </Frame>
         );
       },
+    },
+    m.programs.count > 0 && {
+      id: "side-quests",
+      theme: THEMES.tangerine,
+      shapes: "stars",
+      duration: 7500,
+      render: () => (
+        <Frame>
+          <Kicker>
+            <span className="inline-flex items-center gap-[1.5cqw]">
+              <Swords className="h-[4cqw] w-[4cqw]" /> Side quests unlocked
+            </span>
+          </Kicker>
+          <div className="flex items-end gap-[3cqw]">
+            <div className={`${BIG} ${bigSize(m.programs.count)}`}>
+              <CountUp value={m.programs.count} delay={0.3} />
+            </div>
+            <div className="pb-[3cqw] font-display text-[6.5cqw] font-bold leading-[1.02]">
+              hackathons, fellowships
+              <br />& programs
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-[2cqw]">
+            {m.programs.names.slice(0, 6).map((name, i) => (
+              <Pop key={name} delay={0.9 + i * 0.15}>
+                <span
+                  className="inline-block rounded-[2.5cqw] px-[3.4cqw] py-[1.8cqw] font-display text-[4.4cqw] font-bold"
+                  style={{ background: THEMES.tangerine.fg, color: THEMES.tangerine.bg, rotate: `${i % 2 ? 2 : -2}deg` }}
+                >
+                  {name}
+                </span>
+              </Pop>
+            ))}
+          </div>
+          <Body delay={2}>{copy.sideQuests.line}</Body>
+        </Frame>
+      ),
     },
     (m.roles.all.length > 0 || !!m.roles.dominantFamily) && {
       id: "roles",

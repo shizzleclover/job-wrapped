@@ -2,7 +2,7 @@
   "name": "job-hunt-wrapped-extension",
   "description": "Spotify Wrapped-style story for your job hunt, built from your Gmail",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "wxt",

@@ -1,5 +1,13 @@
 import { buildFallbackCopy } from "../shared/fallback";
-import { WrappedResponseSchema, type WrappedCopy, type WrappedInput, type WrappedResponse } from "../shared/schema";
+import {
+  ClassifyResponseSchema,
+  WrappedResponseSchema,
+  type ClassifyLabel,
+  type ClassifyRequest,
+  type WrappedCopy,
+  type WrappedInput,
+  type WrappedResponse,
+} from "../shared/schema";
 
 const API_URL: string = import.meta.env.WXT_API_URL || "http://localhost:3000/api/wrapped";
 /** The deployed site: hosts the API and the public share pages. */
@@ -35,5 +43,26 @@ export async function generateCopy(input: WrappedInput): Promise<CopyResult> {
   } catch (err) {
     console.warn("[job-wrapped] Using offline copy:", err);
     return { copy: buildFallbackCopy(input), source: "fallback", offline: true };
+  }
+}
+
+const CLASSIFY_URL = API_URL.replace(/\/wrapped$/, "/classify");
+
+/** Asks the AI to label emails the rules weren't sure about. Returns {} if the server is down or says nothing. */
+export async function classifyEmails(items: ClassifyRequest["items"]): Promise<Record<string, ClassifyLabel>> {
+  if (!items.length) return {};
+  try {
+    const res = await fetch(CLASSIFY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items }),
+      signal: AbortSignal.timeout(25_000),
+    });
+    if (!res.ok) throw new Error(`Classify responded ${res.status}`);
+    const { labels } = ClassifyResponseSchema.parse(await res.json());
+    return Object.fromEntries(labels.map((l) => [l.id, l.label]));
+  } catch (err) {
+    console.warn("[job-wrapped] AI check unavailable, using rules only:", err);
+    return {};
   }
 }
