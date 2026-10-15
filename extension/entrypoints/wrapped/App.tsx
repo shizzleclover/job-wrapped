@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Play } from "lucide-react";
 import { SpiceLevelSchema, type SpiceLevel, type WrappedInput } from "../../shared/schema";
@@ -7,6 +7,7 @@ import { buildDemoInput } from "../../lib/input";
 import { hasExtensionStorage, latestWrappedId, loadWrapped, saveWrapped } from "../../lib/storage";
 import { Player } from "../../components/story/Player";
 import { buildSlides } from "../../components/story/slides";
+import { Soundtrack } from "../../lib/soundtrack";
 
 type State =
   | { phase: "loading" }
@@ -34,7 +35,7 @@ async function load(): Promise<State> {
   if (!id || !stored) return { phase: "empty" };
   if (stored.response) return { phase: "ready", id, input: stored.input, result: { ...stored.response, offline: stored.response.source === "fallback" } };
   const result = await generateCopy(stored.input);
-  await saveWrapped({ ...stored, response: { copy: result.copy, source: result.source } });
+  await saveWrapped({ ...stored, response: { copy: result.copy, source: result.source, track: result.track ?? null } });
   return { phase: "ready", id, input: stored.input, result };
 }
 
@@ -44,6 +45,18 @@ export default function App() {
   const [introDone, setIntroDone] = useState(preview.autoplay);
   const [regenerating, setRegenerating] = useState(false);
   const [restartKey, setRestartKey] = useState(0);
+  const soundtrack = useRef<Soundtrack | null>(null);
+
+  const start = () => {
+    // Created inside the click: browsers only allow audio after a user gesture.
+    try {
+      soundtrack.current ??= new Soundtrack();
+      soundtrack.current.start();
+    } catch (err) {
+      console.warn("[job-wrapped] Audio unavailable:", err);
+    }
+    setStarted(true);
+  };
 
   useEffect(() => {
     const timer = setTimeout(() => setIntroDone(true), MIN_INTRO_MS);
@@ -58,7 +71,7 @@ export default function App() {
       const input = { ...state.input, spiceLevel: spice };
       setState({ ...state, input });
       const result = await generateCopy(input);
-      if (state.id) await saveWrapped({ id: state.id, input, response: { copy: result.copy, source: result.source } });
+      if (state.id) await saveWrapped({ id: state.id, input, response: { copy: result.copy, source: result.source, track: result.track ?? null } });
       setState({ phase: "ready", id: state.id, input, result });
       setRegenerating(false);
     },
@@ -70,6 +83,7 @@ export default function App() {
     return buildSlides({
       input: state.input,
       copy: state.result.copy,
+      track: state.result.track ?? null,
       offline: state.result.offline,
       spice: state.input.spiceLevel,
       regenerating,
@@ -89,10 +103,11 @@ export default function App() {
         restartKey={restartKey}
         initialIndex={Math.min(preview.slide, slides.length - 1)}
         initialPaused={preview.paused}
+        soundtrack={soundtrack.current}
       />
     );
   }
-  return <Intro ready={ready} year={state.phase === "ready" ? state.input.meta.year : new Date().getFullYear()} onStart={() => setStarted(true)} />;
+  return <Intro ready={ready} year={state.phase === "ready" ? state.input.meta.year : new Date().getFullYear()} onStart={start} />;
 }
 
 const LOADING_LINES = ["Rewinding your year", "Counting the ghosts", "Translating corporate speak", "Picking your anthem", "Writing your story"];

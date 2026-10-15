@@ -207,8 +207,41 @@ export const WrappedCopySchema = z.object({
 });
 export type WrappedCopy = z.infer<typeof WrappedCopySchema>;
 
+/** The theme song, resolved on Spotify by the server. */
+export const TrackSchema = z.object({
+  id: z.string().max(40),
+  title: z.string().max(200),
+  artist: z.string().max(200),
+  albumArt: z.string().url().nullable(),
+  url: z.string().url(),
+});
+export type Track = z.infer<typeof TrackSchema>;
+
 export const WrappedResponseSchema = z.object({
   copy: WrappedCopySchema,
   source: z.enum(["ai", "fallback"]),
+  track: TrackSchema.nullable().optional(),
 });
 export type WrappedResponse = z.infer<typeof WrappedResponseSchema>;
+
+export const CardStyleSchema = z.enum(["aura", "bold", "paper"]);
+export type CardStyle = z.infer<typeof CardStyleSchema>;
+
+const Hex = z.string().regex(/^#[0-9a-f]{6}$/i);
+
+/** Everything a share link carries. Short keys keep URLs short; nothing here identifies the user. */
+export const ShareCardSchema = z.object({
+  v: z.literal(1),
+  y: z.number().int().min(2000).max(2100),
+  a: z.string().max(80),
+  t: z.string().max(160),
+  r: z.string().max(60),
+  c: z.array(Hex).length(3),
+  s: z.object({ apps: Count, int: Count, ghost: Pct, off: Count, unf: Count }),
+  co: z.array(Name).max(5),
+  p: Name.nullable(),
+  h: z.string().max(8).nullable(),
+  m: z.object({ t: z.string().max(120), a: z.string().max(120) }),
+  st: CardStyleSchema,
+});
+export type ShareCard = z.infer<typeof ShareCardSchema>;

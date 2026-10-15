@@ -2,6 +2,8 @@ import { buildFallbackCopy } from "../shared/fallback";
 import { WrappedResponseSchema, type WrappedCopy, type WrappedInput, type WrappedResponse } from "../shared/schema";
 
 const API_URL: string = import.meta.env.WXT_API_URL || "http://localhost:3000/api/wrapped";
+/** The deployed site: hosts the API and the public share pages. */
+export const SITE_URL = new URL(API_URL).origin;
 const TIMEOUT_MS = 30_000;
 const HEX = /^#[0-9a-f]{6}$/i;
 

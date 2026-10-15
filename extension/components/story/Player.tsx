@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 import confetti from "canvas-confetti";
-import { ChevronLeft, ChevronRight, Pause, Play } from "lucide-react";
+import { ChevronLeft, ChevronRight, Pause, Play, Volume2, VolumeX } from "lucide-react";
+import { SECTION_FOR_SLIDE, type Soundtrack } from "../../lib/soundtrack";
 import { Shapes } from "./primitives";
 import type { SlideDef } from "./slides";
 import { withAlpha } from "./themes";
@@ -14,17 +15,26 @@ export function Player({
   restartKey,
   initialIndex = 0,
   initialPaused = false,
+  soundtrack = null,
 }: {
   slides: SlideDef[];
   isDemo: boolean;
   restartKey: number;
   initialIndex?: number;
   initialPaused?: boolean;
+  soundtrack?: Soundtrack | null;
 }) {
   const [index, setIndex] = useState(initialIndex);
   const [paused, setPaused] = useState(initialPaused);
   const [held, setHeld] = useState(false);
   const [hidden, setHidden] = useState(document.hidden);
+  const [muted, setMuted] = useState(() => {
+    try {
+      return localStorage.getItem("jw:muted") === "1";
+    } catch {
+      return false;
+    }
+  });
   const hold = useRef<{ timer: number; x: number } | null>(null);
   const slide = slides[Math.min(index, slides.length - 1)]!;
   const last = index >= slides.length - 1;
@@ -39,7 +49,8 @@ export function Player({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "ArrowRight") next();
+      if (e.key === "m" || e.key === "M") setMuted((v) => !v);
+      else if (e.key === "ArrowRight") next();
       else if (e.key === "ArrowLeft") prev();
       else if (e.key === " " && !(e.target instanceof HTMLButtonElement)) {
         e.preventDefault();
@@ -54,6 +65,28 @@ export function Player({
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [next, prev]);
+
+  useEffect(() => {
+    soundtrack?.setMuted(muted);
+    try {
+      localStorage.setItem("jw:muted", muted ? "1" : "0");
+    } catch {
+      /* not remembered in private mode */
+    }
+  }, [muted, soundtrack]);
+
+  useEffect(() => {
+    soundtrack?.setSection(slide.music ?? SECTION_FOR_SLIDE[slide.id] ?? "groove");
+  }, [slide.id, slide.music, soundtrack]);
+
+  useEffect(() => soundtrack?.setHidden(hidden), [hidden, soundtrack]);
+
+  useEffect(() => {
+    // Clicks inside an iframe (the Spotify player) never reach us; the window blurring is the tell.
+    const onBlur = () => setTimeout(() => document.activeElement?.tagName === "IFRAME" && setPaused(true), 0);
+    window.addEventListener("blur", onBlur);
+    return () => window.removeEventListener("blur", onBlur);
+  }, []);
 
   useEffect(() => {
     if (!slide.confetti || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
@@ -131,6 +164,18 @@ export function Player({
                   </span>
                 )}
               </div>
+              <div className="flex items-center gap-[2cqw]">
+              {soundtrack && (
+                <button
+                  onClick={() => setMuted((m) => !m)}
+                  aria-label={muted ? "Unmute music" : "Mute music"}
+                  aria-pressed={muted}
+                  className="flex h-[8cqw] w-[8cqw] items-center justify-center rounded-full transition"
+                  style={{ background: withAlpha(fg, 0.12) }}
+                >
+                  {muted ? <VolumeX className="h-[4cqw] w-[4cqw]" /> : <Volume2 className="h-[4cqw] w-[4cqw]" />}
+                </button>
+              )}
               {slide.duration !== null && (
                 <button
                   onClick={() => setPaused((p) => !p)}
@@ -141,6 +186,7 @@ export function Player({
                   {paused ? <Play className="h-[3.6cqw] w-[3.6cqw]" fill="currentColor" /> : <Pause className="h-[3.6cqw] w-[3.6cqw]" fill="currentColor" />}
                 </button>
               )}
+              </div>
             </div>
           </div>
 

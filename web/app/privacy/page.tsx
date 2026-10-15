@@ -60,6 +60,21 @@ export default function Privacy() {
         </p>
       </Section>
 
+      <Section title="Theme songs and Spotify">
+        <p>
+          To show your theme song&apos;s cover art and player, our server searches Spotify for the song title and artist. Only the song is sent to
+          Spotify, never your stats or email data. If you press play, the Spotify player is provided by Spotify under its own terms.
+        </p>
+      </Section>
+
+      <Section title="Share links">
+        <p>
+          When you share your Wrapped, the link itself contains what&apos;s on your card: your archetype, tagline, headline numbers, theme song and,
+          unless you hide them, your top company names. We don&apos;t store share links. Anyone with a link can see that card, so only share it
+          where you&apos;re comfortable.
+        </p>
+      </Section>
+
       <Section title="What's stored">
         <p>
           Your stats and story are saved in your browser&apos;s extension storage, so you can replay your Wrapped. They stay on your device and are

@@ -12,7 +12,13 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// Absolute URLs for link previews. Vercel sets VERCEL_PROJECT_PRODUCTION_URL; NEXT_PUBLIC_SITE_URL overrides it.
+const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "http://localhost:3000");
+
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: "Job Hunt Wrapped",
   description: "The AI writer behind the Job Hunt Wrapped browser extension.",
 };

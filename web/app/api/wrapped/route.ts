@@ -3,6 +3,7 @@ import { generateText, Output } from "ai";
 import { google, type GoogleLanguageModelOptions } from "@ai-sdk/google";
 import { WrappedCopySchema, WrappedInputSchema, type WrappedCopy, type WrappedInput, type WrappedResponse } from "@/lib/wrapped/schema";
 import { buildFallbackCopy, hourLabel } from "@/lib/wrapped/fallback";
+import { findTrack } from "@/lib/spotify";
 
 const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const MAX_BODY_BYTES = 100_000;
@@ -126,10 +127,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid input", issues: parsed.error.issues.slice(0, 5) }, { status: 400, headers });
   }
   const input = parsed.data;
-  const fallback = (): WrappedResponse => ({ copy: buildFallbackCopy(input), source: "fallback" });
+  const respond = async (copy: WrappedCopy, source: WrappedResponse["source"]) => {
+    const body: WrappedResponse = { copy, source, track: await findTrack(copy.personality.themeSong) };
+    return NextResponse.json(body, { headers });
+  };
 
   if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim()) {
-    return NextResponse.json(fallback(), { headers });
+    return respond(buildFallbackCopy(input), "fallback");
   }
 
   try {
@@ -143,11 +147,10 @@ export async function POST(req: NextRequest) {
       // Thinking adds ~15s for little gain on short creative copy.
       providerOptions: MODEL.includes("2.5") ? { google: { thinkingConfig: { thinkingBudget: 0 } } satisfies GoogleLanguageModelOptions } : undefined,
     });
-    const body: WrappedResponse = { copy: scrub(output), source: "ai" };
-    return NextResponse.json(body, { headers });
+    return respond(scrub(output), "ai");
   } catch (error) {
     // The story should always play; the extension shows a small note when copy came from the fallback.
     console.error("Wrapped generation failed, using fallback copy:", error);
-    return NextResponse.json(fallback(), { headers });
+    return respond(buildFallbackCopy(input), "fallback");
   }
 }

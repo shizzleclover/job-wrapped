@@ -1,16 +1,20 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import { Ghost, Mail, MailCheck, Sparkles, Timer, Zap } from "lucide-react";
-import type { SpiceLevel, WrappedCopy, WrappedInput } from "../../shared/schema";
+import { siSpotify } from "simple-icons";
+import type { SpiceLevel, Track, WrappedCopy, WrappedInput } from "../../shared/schema";
 import { hourLabel, plural } from "../../shared/fallback";
 import { CountUp, Fade, Kicker, Marquee, Pop, Words, type ShapeVariant } from "./primitives";
 import { Funnel, GhostWaffle, HourRing, MonthBars, RankBars, WeekdayColumns } from "./charts";
 import { THEMES, auraOf, inkOn, withAlpha, type Theme } from "./themes";
 import { SummarySlide } from "./ShareCard";
+import type { Section } from "../../lib/soundtrack";
 
 export interface SlideContext {
   input: WrappedInput;
   copy: WrappedCopy;
+  /** The anthem on Spotify, when the server could find it */
+  track: Track | null;
   offline: boolean;
   spice: SpiceLevel;
   regenerating: boolean;
@@ -25,6 +29,8 @@ export interface SlideDef {
   /** ms; null means the slide waits for the viewer */
   duration: number | null;
   confetti?: string[];
+  /** Soundtrack section; defaults by slide id */
+  music?: Section;
   render: () => ReactNode;
 }
 
@@ -593,8 +599,10 @@ export function buildSlides(ctx: SlideContext): SlideDef[] {
       id: "anthem",
       theme: { ...THEMES.plum, a: aura[0], b: aura[2] },
       shapes: "waves",
-      duration: 8000,
-      render: () => <Anthem copy={copy} />,
+      duration: ctx.track ? 14000 : 8000,
+      // The Spotify player brings its own audio, so the soundtrack steps aside.
+      music: ctx.track ? "hush" : "duck",
+      render: () => (ctx.track ? <SpotifyAnthem copy={copy} track={ctx.track} /> : <Anthem copy={copy} />),
     },
     {
       id: "forecast",
@@ -694,6 +702,65 @@ function CrystalBall() {
       />
       <div className="absolute -bottom-[6%] left-1/2 h-[16%] w-[60%] -translate-x-1/2 rounded-[50%] bg-[#1A0010]" />
     </motion.div>
+  );
+}
+
+function SpotifyAnthem({ copy, track }: { copy: WrappedCopy; track: Track }) {
+  const [a1] = auraOf(copy.personality.auraColors);
+  return (
+    <Frame>
+      <Kicker>Your official job hunt anthem</Kicker>
+      <div className="relative my-[1cqw] h-[56cqw] w-[86cqw]">
+        <motion.div
+          className="absolute left-[24cqw] top-[3cqw] aspect-square w-[50cqw] rounded-full"
+          style={{ background: "repeating-radial-gradient(circle, #111 0 1cqw, #1d1d1d 1cqw 1.4cqw)", boxShadow: `0 3cqw 12cqw ${a1}55` }}
+          initial={{ x: "-40%", opacity: 0 }}
+          animate={{ x: 0, opacity: 1, rotate: 360 }}
+          transition={{ x: { delay: 0.6, type: "spring", stiffness: 70, damping: 14 }, opacity: { delay: 0.6 }, rotate: { duration: 3.5, repeat: Infinity, ease: "linear" } }}
+        >
+          {track.albumArt && (
+            <img src={track.albumArt} alt="" className="absolute left-1/2 top-1/2 aspect-square w-[36%] -translate-x-1/2 -translate-y-1/2 rounded-full object-cover" />
+          )}
+        </motion.div>
+        <motion.div
+          className="absolute left-0 top-0 aspect-square w-[56cqw] overflow-hidden rounded-[2cqw] bg-[#111] shadow-[0_3cqw_10cqw_rgba(0,0,0,0.55)]"
+          initial={{ scale: 0.7, opacity: 0, rotate: -6 }}
+          animate={{ scale: 1, opacity: 1, rotate: 0 }}
+          transition={{ type: "spring", stiffness: 140, damping: 15 }}
+        >
+          {track.albumArt && <img src={track.albumArt} alt={`${track.title} cover art`} className="h-full w-full object-cover" />}
+        </motion.div>
+      </div>
+      <div className="font-display text-[9.5cqw] font-extrabold leading-[0.95] tracking-[-0.03em]">
+        <Words text={track.title} delay={0.8} />
+      </div>
+      <Fade delay={1.2}>
+        <div className="font-display text-[5.6cqw] font-semibold opacity-80">{track.artist}</div>
+      </Fade>
+      <Body delay={1.6}>{copy.personality.themeSong.reason}</Body>
+      <Fade delay={2}>
+        <div data-interactive className="space-y-[2.5cqw]">
+          <iframe
+            title={`${track.title} on Spotify`}
+            src={`https://open.spotify.com/embed/track/${track.id}?utm_source=generator&theme=0`}
+            className="h-[80px] w-full rounded-[12px] border-0"
+            allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+            loading="lazy"
+          />
+          <a
+            href={track.url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-[2cqw] rounded-full bg-[#1ED760] px-[4cqw] py-[2.2cqw] font-sans text-[3.4cqw] font-bold text-black transition hover:brightness-95"
+          >
+            <svg viewBox="0 0 24 24" className="h-[4.4cqw] w-[4.4cqw]" fill="currentColor" aria-hidden>
+              <path d={siSpotify.path} />
+            </svg>
+            Play on Spotify
+          </a>
+        </div>
+      </Fade>
+    </Frame>
   );
 }
 
